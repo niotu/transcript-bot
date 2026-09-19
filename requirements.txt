@@ -1,0 +1,5 @@
+pyTelegramBotAPI==4.32.0
+faster-whisper==1.2.1
+pytesseract==0.3.13
+google-genai==2.24.0
+python-dotenv==1.2.3

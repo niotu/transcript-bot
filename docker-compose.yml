@@ -1,0 +1,20 @@
+name: transcript-bot
+
+services:
+  transcript-bot:
+    build: .
+    container_name: transcript-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./hf_cache:/app/hf_cache
+    mem_limit: 1200m
+    memswap_limit: 1200m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
