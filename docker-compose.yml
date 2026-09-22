@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./hf_cache:/app/hf_cache
+      - ./welcome.md:/app/welcome.md
     mem_limit: 1200m
     memswap_limit: 1200m
     cpus: 1.0

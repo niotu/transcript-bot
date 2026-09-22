@@ -7,11 +7,19 @@ from typing import Optional, Tuple
 import telebot
 from telebot import types
 
-from . import md_export, session_store, transcriber, vision
+from . import config, md_export, session_store, transcriber, vision
 
 logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_FILE_SIZE = 20 * 1024 * 1024  # Bot API download limit
+
+
+def _welcome_text() -> str:
+    try:
+        return config.WELCOME_FILE.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        logger.warning("Welcome file not found: %s", config.WELCOME_FILE)
+        return "Пересылайте сюда сообщения переписки, затем отправьте /export."
 
 
 def _display_name(user: Optional[types.User]) -> str:
@@ -58,13 +66,7 @@ def _save_media(bot: telebot.TeleBot, chat_id: int, file_id: str, ext: str) -> s
 def register(bot: telebot.TeleBot) -> None:
     @bot.message_handler(commands=["start", "help"])
     def cmd_start(message: types.Message):
-        bot.reply_to(
-            message,
-            "Пересылайте сюда сообщения переписки (текст, фото, видео, голосовые).\n"
-            "Когда закончите — отправьте /export, и я пришлю .md файл с расшифровкой.\n"
-            "/status — сколько сообщений уже накоплено.\n"
-            "/clear — очистить накопленное без экспорта.",
-        )
+        bot.reply_to(message, _welcome_text())
 
     @bot.message_handler(commands=["status"])
     def cmd_status(message: types.Message):
@@ -91,6 +93,7 @@ def register(bot: telebot.TeleBot) -> None:
 
         with open(out_path, "rb") as f:
             bot.send_document(chat_id, f, visible_file_name="transcript.md")
+        out_path.unlink()
         bot.edit_message_text("Готово.", chat_id, status.message_id)
         session_store.clear(chat_id)
 

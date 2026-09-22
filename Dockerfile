@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 COPY bot ./bot
+COPY welcome.md .
 
 ENV HF_HOME=/app/hf_cache \
     DATA_DIR=/app/data \

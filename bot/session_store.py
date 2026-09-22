@@ -46,3 +46,6 @@ def clear(chat_id: int) -> None:
         path = _session_file(chat_id)
         if path.exists():
             path.unlink()
+        for f in media_dir(chat_id).iterdir():
+            if f.is_file():
+                f.unlink()

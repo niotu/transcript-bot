@@ -24,3 +24,5 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+WELCOME_FILE = Path(os.environ.get("WELCOME_FILE", "./welcome.md")).resolve()
