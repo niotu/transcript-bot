@@ -22,6 +22,13 @@ def _welcome_text() -> str:
         return "Пересылайте сюда сообщения переписки, затем отправьте /export."
 
 
+def _commands_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("/export", "/status")
+    kb.row("/clear", "/help")
+    return kb
+
+
 def _display_name(user: Optional[types.User]) -> str:
     if user is None:
         return "Неизвестно"
@@ -66,27 +73,36 @@ def _save_media(bot: telebot.TeleBot, chat_id: int, file_id: str, ext: str) -> s
 def register(bot: telebot.TeleBot) -> None:
     @bot.message_handler(commands=["start", "help"])
     def cmd_start(message: types.Message):
-        bot.reply_to(message, _welcome_text())
+        bot.reply_to(
+            message,
+            _welcome_text(),
+            reply_markup=_commands_keyboard(),
+            parse_mode="Markdown",
+        )
 
     @bot.message_handler(commands=["status"])
     def cmd_status(message: types.Message):
         count = len(session_store.get_entries(message.chat.id))
-        bot.reply_to(message, f"Накоплено сообщений: {count}")
+        bot.reply_to(message, f"Накоплено сообщений: {count}", reply_markup=_commands_keyboard())
 
     @bot.message_handler(commands=["clear"])
     def cmd_clear(message: types.Message):
         session_store.clear(message.chat.id)
-        bot.reply_to(message, "Накопленные сообщения очищены.")
+        bot.reply_to(message, "Накопленные сообщения очищены.", reply_markup=_commands_keyboard())
 
     @bot.message_handler(commands=["export"])
     def cmd_export(message: types.Message):
         chat_id = message.chat.id
         entries = session_store.get_entries(chat_id)
         if not entries:
-            bot.reply_to(message, "Пока нечего экспортировать — перешлите сообщения.")
+            bot.reply_to(
+                message,
+                "Пока нечего экспортировать — перешлите сообщения.",
+                reply_markup=_commands_keyboard(),
+            )
             return
 
-        status = bot.reply_to(message, "Собираю .md файл...")
+        status = bot.reply_to(message, "Собираю .md файл...", reply_markup=_commands_keyboard())
         md_text = md_export.build_markdown(chat_id, str(chat_id), entries)
         out_path = session_store.media_dir(chat_id).parent / f"transcript_{uuid.uuid4().hex[:8]}.md"
         out_path.write_text(md_text, encoding="utf-8")
