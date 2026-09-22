@@ -1,8 +1,9 @@
 import logging
+import re
 import traceback
 import uuid
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import telebot
 from telebot import types
@@ -38,27 +39,57 @@ def _display_name(user: Optional[types.User]) -> str:
     return name or "Неизвестно"
 
 
-def _sender_and_date(message: types.Message) -> Tuple[str, str]:
+def _account_name(user: Optional[types.User]) -> str:
+    """Name of the Telegram account itself (no @username), for filenames."""
+    if user is None:
+        return "Неизвестно"
+    name = " ".join(p for p in [user.first_name, user.last_name] if p)
+    return name or "Неизвестно"
+
+
+def _sender_and_date(message: types.Message) -> Tuple[str, str, str]:
+    """Returns (display name for the transcript body, date, companion account name)."""
     origin = message.forward_origin
     if origin is not None:
         date = datetime.fromtimestamp(origin.date).strftime("%Y-%m-%d %H:%M")
         if isinstance(origin, types.MessageOriginUser):
-            return _display_name(origin.sender_user), date
+            return _display_name(origin.sender_user), date, _account_name(origin.sender_user)
         if isinstance(origin, types.MessageOriginHiddenUser):
-            return origin.sender_user_name, date
+            return origin.sender_user_name, date, origin.sender_user_name
         if isinstance(origin, types.MessageOriginChat):
             name = origin.sender_chat.title or "Чат"
             if origin.author_signature:
                 name = f"{name} ({origin.author_signature})"
-            return name, date
+            return name, date, origin.sender_chat.title or "Чат"
         if isinstance(origin, types.MessageOriginChannel):
             name = origin.chat.title or "Канал"
             if origin.author_signature:
                 name = f"{name} ({origin.author_signature})"
-            return name, date
+            return name, date, origin.chat.title or "Канал"
 
     date = datetime.fromtimestamp(message.date).strftime("%Y-%m-%d %H:%M")
-    return _display_name(message.from_user), date
+    return _display_name(message.from_user), date, _account_name(message.from_user)
+
+
+_SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def _slugify(name: str) -> str:
+    name = _SLUG_INVALID_CHARS.sub("", name)
+    return re.sub(r"\s+", "-", name.strip())
+
+
+def _export_filename(entries: List[Dict[str, Any]]) -> str:
+    companions = []
+    seen = set()
+    for entry in entries:
+        name = entry.get("companion")
+        if name and name not in seen:
+            seen.add(name)
+            companions.append(_slugify(name))
+
+    parts = [datetime.now().strftime("%d.%m.%Y")] + companions
+    return f"transcript-{'-'.join(parts)}.md"
 
 
 def _save_media(bot: telebot.TeleBot, chat_id: int, file_id: str, ext: str) -> str:
@@ -108,7 +139,7 @@ def register(bot: telebot.TeleBot) -> None:
         out_path.write_text(md_text, encoding="utf-8")
 
         with open(out_path, "rb") as f:
-            bot.send_document(chat_id, f, visible_file_name="transcript.md")
+            bot.send_document(chat_id, f, visible_file_name=_export_filename(entries))
         out_path.unlink()
         bot.edit_message_text("Готово.", chat_id, status.message_id)
         session_store.clear(chat_id)
@@ -117,15 +148,21 @@ def register(bot: telebot.TeleBot) -> None:
     def handle_text(message: types.Message):
         if message.text.startswith("/"):
             return
-        sender, date = _sender_and_date(message)
+        sender, date, companion = _sender_and_date(message)
         session_store.add_entry(
             message.chat.id,
-            {"type": "text", "sender": sender, "date": date, "text": message.text},
+            {
+                "type": "text",
+                "sender": sender,
+                "date": date,
+                "text": message.text,
+                "companion": companion,
+            },
         )
 
     @bot.message_handler(content_types=["photo"])
     def handle_photo(message: types.Message):
-        sender, date = _sender_and_date(message)
+        sender, date, companion = _sender_and_date(message)
         chat_id = message.chat.id
         try:
             largest = message.photo[-1]
@@ -144,13 +181,14 @@ def register(bot: telebot.TeleBot) -> None:
                 "text": description,
                 "caption": message.caption,
                 "media_path": path,
+                "companion": companion,
             },
         )
 
     def _handle_audio_like(
         message: types.Message, kind: str, file_id: str, ext: str, file_size: Optional[int]
     ):
-        sender, date = _sender_and_date(message)
+        sender, date, companion = _sender_and_date(message)
         chat_id = message.chat.id
         if file_size and file_size > MAX_TELEGRAM_FILE_SIZE:
             path, text = None, "[файл больше 20 МБ, Bot API не позволяет его скачать]"
@@ -171,6 +209,7 @@ def register(bot: telebot.TeleBot) -> None:
                 "text": text,
                 "caption": getattr(message, "caption", None),
                 "media_path": path,
+                "companion": companion,
             },
         )
 
@@ -206,11 +245,17 @@ def register(bot: telebot.TeleBot) -> None:
         content_types=["document", "sticker", "animation", "location", "contact", "poll"]
     )
     def handle_unsupported(message: types.Message):
-        sender, date = _sender_and_date(message)
+        sender, date, companion = _sender_and_date(message)
         label = message.content_type
         if message.content_type == "document" and message.document.file_name:
             label = f"document: {message.document.file_name}"
         session_store.add_entry(
             message.chat.id,
-            {"type": "unsupported", "sender": sender, "date": date, "text": label},
+            {
+                "type": "unsupported",
+                "sender": sender,
+                "date": date,
+                "text": label,
+                "companion": companion,
+            },
         )
