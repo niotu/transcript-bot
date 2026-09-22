@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import telebot
 from telebot import types
 
-from . import config, md_export, session_store, transcriber, vision
+from . import config, md_export, rich_message, session_store, transcriber, vision
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,10 @@ def register(bot: telebot.TeleBot) -> None:
     @bot.message_handler(commands=["export"])
     def cmd_export(message: types.Message):
         chat_id = message.chat.id
-        entries = session_store.get_entries(chat_id)
+        # Concurrent handlers (OCR/transcription can take seconds) finish out of
+        # arrival order, so entries must be re-sorted by message_id rather than
+        # trusted to have been appended in order.
+        entries = sorted(session_store.get_entries(chat_id), key=lambda e: e.get("seq", 0))
         if not entries:
             bot.reply_to(
                 message,
@@ -157,6 +160,7 @@ def register(bot: telebot.TeleBot) -> None:
                 "date": date,
                 "text": message.text,
                 "companion": companion,
+                "seq": message.message_id,
             },
         )
 
@@ -182,6 +186,7 @@ def register(bot: telebot.TeleBot) -> None:
                 "caption": message.caption,
                 "media_path": path,
                 "companion": companion,
+                "seq": message.message_id,
             },
         )
 
@@ -210,6 +215,7 @@ def register(bot: telebot.TeleBot) -> None:
                 "caption": getattr(message, "caption", None),
                 "media_path": path,
                 "companion": companion,
+                "seq": message.message_id,
             },
         )
 
@@ -241,6 +247,22 @@ def register(bot: telebot.TeleBot) -> None:
             message, "voice", message.audio.file_id, ".mp3", message.audio.file_size
         )
 
+    @bot.message_handler(content_types=["rich_message"])
+    def handle_rich_message(message: types.Message):
+        sender, date, companion = _sender_and_date(message)
+        text = rich_message.to_markdown(message.rich_message).strip()
+        session_store.add_entry(
+            message.chat.id,
+            {
+                "type": "rich_message",
+                "sender": sender,
+                "date": date,
+                "text": text or "[статья без текста]",
+                "companion": companion,
+                "seq": message.message_id,
+            },
+        )
+
     @bot.message_handler(
         content_types=["document", "sticker", "animation", "location", "contact", "poll"]
     )
@@ -257,5 +279,6 @@ def register(bot: telebot.TeleBot) -> None:
                 "date": date,
                 "text": label,
                 "companion": companion,
+                "seq": message.message_id,
             },
         )

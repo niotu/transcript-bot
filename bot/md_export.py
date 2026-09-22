@@ -7,6 +7,7 @@ _TYPE_LABELS = {
     "voice": "🎤 [Голосовое] ",
     "video": "🎬 [Видео] ",
     "video_note": "🎬 [Видео-кружок] ",
+    "rich_message": "📰 [Статья] ",
     "unsupported": "⚠️ [Неподдерживаемый тип] ",
 }
 
@@ -18,8 +19,16 @@ def _format_entry(entry: Dict[str, Any]) -> str:
 
     lines = [f"### {date} — {sender}"]
 
-    body = label + (entry.get("text") or "").strip()
-    lines.append(body.strip() or label.strip() or "*(пусто)*")
+    text = (entry.get("text") or "").strip()
+    if "\n" in text:
+        # Multi-line text (e.g. an article with headings) needs its own line —
+        # a label glued onto the first line would break markdown syntax like "# ".
+        lines.append(label.strip() or "*(пусто)*")
+        if text:
+            lines.append(text)
+    else:
+        body = label + text
+        lines.append(body.strip() or label.strip() or "*(пусто)*")
 
     if entry.get("caption"):
         lines.append(f"Подпись: {entry['caption']}")
